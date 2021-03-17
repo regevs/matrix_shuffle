@@ -28,7 +28,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/format.hpp>
 
-#include "hopscotch_map.h"
+#include "hopscotch/hopscotch_map.h"
 
 #include "Eigen/Dense"
 #include "Eigen/Core"
