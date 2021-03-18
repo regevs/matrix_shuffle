@@ -360,10 +360,34 @@ class Solver {
         //
         // Initialize point holder
         //
-        _point_holder.reset(new UniformPointHolder(
+
+        // _point_holder.reset(new ShiftedPointHolder(
+        //     _pts,
+        //     _g,
+        //     _max_bound / 2,
+        //     _max_bound,
+        //     int(_max_bound / 4),
+        //     int(_max_bound / 4)
+        // ));
+
+        MatrixXi shifts;
+        int W = int(_max_bound / 100);
+
+        shifts.resize(4, 2);
+        shifts <<
+            0, 0,
+            W/2, 0,
+            0, W/2,
+            W/2, W/2;
+
+        _point_holder.reset(new ManyShiftsPointHolder(
             _pts,
-            _g
+            _g,
+            W,
+            _max_bound,
+            shifts
         ));
+
 
         //
         // Calculate starting and target likelihoods
@@ -414,6 +438,11 @@ class Solver {
 
             // If so, do it
             if (decide_to_accept(accept_p)) {
+                // if (dynamic_cast<ShiftedPointHolder*>(_point_holder.get())->point_to_bin_number(two_old_contacts.row(0)) == 1) {
+                //     cout << accept_p << " " << endl << two_old_contacts << endl << two_new_contacts << endl << endl;
+                // }
+                
+                
                 // Update histogram
                 update_current_histogram(two_old_contacts, two_new_contacts);
 
@@ -441,12 +470,12 @@ class Solver {
                 auto elapsed_seconds = std::chrono::duration_cast<std::chrono::duration<double>>
                     (std::chrono::steady_clock::now() - period_time_begin).count();                
 
-                stats_file << boost::format("#its: %10i | 🕑: %6.1f [min] | it/s: %11.1f | Δ>1 %%: %1.6f | Accept %%: %1.6f | max(abs(diff)): %8i | mean(abs(diff)): %6.2f | %%LL: %1.6f\n")
+                stats_file << boost::format("#its: %10i | 🕑: %6.1f [min] | it/s: %11.1f | Δ>1: %2.5f%% | Accept: %2.5f%% | max(abs(diff)): %8i | mean(abs(diff)): %6.2f | %%LL: %1.6f\n")
                     % n_iter
                     % (total_elapsed_seconds / 60)
                     % (_rate_every / elapsed_seconds)
-                    % (float(total_improved_delta) / _rate_every)
-                    % (float(accept_count) / _rate_every)
+                    % (float(total_improved_delta) / _rate_every * 100)
+                    % (float(accept_count) / _rate_every * 100)
                     % max_abs_diff
                     % (float(_l1_distance) / _n_bins)
                     % ((calculate_current_likelihood() - _starting_log_likelihood) / (_target_log_likelihood - _starting_log_likelihood))

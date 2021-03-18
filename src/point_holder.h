@@ -25,17 +25,17 @@ class PointHolder {
         TwoContactsMatrix& two_old_contacts,
         TwoContactsMatrix& two_new_contacts,
         pair<int, int>& two_chosen_inds,
-        int first_chosen_index = -1) { }    
+        int first_chosen_index = -1) = 0;    
 
     virtual void probability_of_switch(
         TwoContactsMatrix& two_old_contacts, 
         TwoContactsMatrix& two_new_contacts,
         double& probability_of_new_given_old,
-        double& probability_of_old_given_new) { }
+        double& probability_of_old_given_new) = 0;
 
     virtual void perform_switch(
         TwoContactsMatrix& two_new_contacts, 
-        pair<int, int>& two_chosen_inds) { }
+        pair<int, int>& two_chosen_inds) = 0;
 
     virtual ~PointHolder() { }
 };
@@ -53,16 +53,23 @@ class UniformPointHolder : public PointHolder {
         pair<int, int>& two_chosen_inds,
         int first_chosen_index = -1) {
 
-        if (first_chosen_index != -1) {
-            two_chosen_inds.first = first_chosen_index;
-        } else {
-            two_chosen_inds.first = draw_random_point();
-        }
-        two_chosen_inds.second = draw_random_point();
-                         
+        // Draw two points
+        do {
+            // Draw first point uniformly 
+            // (i.e., proportionally from each bin according to the number of points in the bin)
+            if (first_chosen_index != -1) {
+                two_chosen_inds.first = first_chosen_index;
+            } else {
+                two_chosen_inds.first = draw_random_point();
+            }
+
+            two_chosen_inds.second = draw_random_point();
+        } while (two_chosen_inds.second == two_chosen_inds.first);
+                        
         if (two_chosen_inds.second < two_chosen_inds.first) {
             std::swap(two_chosen_inds.first, two_chosen_inds.second);            
         }
+
 
         two_old_contacts(0, 0) = _pts(two_chosen_inds.first, 0);
         two_old_contacts(0, 1) = _pts(two_chosen_inds.first, 1);
@@ -145,6 +152,10 @@ class ShiftedPointHolder : public PointHolder {
             int bin_idx = point_to_bin_number(_pts.row(i));
             insert_point(bin_idx, i);       
         }
+
+        // for (int i = 0; i < _n_bins * _n_bins; i++) {
+        //     cout << "_bin_to_contacts[" << i << "]: " << _bin_to_contacts[i].size() << endl;
+        // }
     }
 
     virtual ~ShiftedPointHolder() { }
@@ -183,7 +194,7 @@ class ShiftedPointHolder : public PointHolder {
     }
    
     virtual int draw_random_point_from_bin(int bin_number) {
-        return int(_unit_interval_sampler(_g) * _bin_to_contacts[bin_number].size());
+        return _bin_to_contacts[bin_number][int(_unit_interval_sampler(_g) * _bin_to_contacts[bin_number].size())];
     }        
     
     virtual void draw_switch(
@@ -289,70 +300,102 @@ class ShiftedPointHolder : public PointHolder {
     }
 };
 
-/*
-class ShfManyShifts {
+
+class ManyShiftsPointHolder : public PointHolder {
   public:
-    boost::ptr_vector<ShfPtholder> _holders;
-    default_random_engine _rd;
+    boost::ptr_vector<ShiftedPointHolder> _holders;
+    boost::scoped_ptr<UniformPointHolder> _uniform_holder;
+    
     mt19937 _g;
-    std::uniform_int_distribution<> _uniform_sampler;    
-    PointMatrix& _pts;  
+    std::uniform_int_distribution<> _holder_sampler;
+    double _mixture_prob;    
    
-    ShfManyShifts(PointMatrix& pts,
-                int W,
-                int max_bound,
-                int seed,
-                MatrixXi shifts) :
-        _rd(seed),
-        _g(_rd()),
-        _uniform_sampler(0, shifts.rows()-1),
-        _pts(pts)
+    ManyShiftsPointHolder(
+        PointMatrix& pts,
+        mt19937& g,
+        int W,
+        int max_bound,
+        MatrixXi shifts,
+        double mixture_prob = 0.5) :
+        PointHolder(pts, g),
+        _g(g),
+        _holder_sampler(0, shifts.rows()-1),
+        _mixture_prob(mixture_prob)
     {
-        // cout << __LINE__ << endl;
-        cout << "dims in shfmanyshufts constructor:" << " " << pts.rows() << " " << pts.cols() << endl;
         for (int i = 0; i < shifts.rows(); i++) {
-            _holders.push_back(new ShfPtholder(pts, W, max_bound, 0, shifts(i, 0), shifts(i, 1)));
-            //cerr << _holders[i]._sum_num_of_switches << endl;
-        }        
-        // printf("Address of x is %p\n", (void *)ip);  
-        cout << "Address of holders._pts is" << " " << &_pts << endl;
-        cout << "dims in shfmanyshufts member:" << " " << _pts.rows() << " " << _pts.cols() << endl;
-        // cout << _pts(0,0) << endl;
-        // cout << __LINE__ << endl;
-        for (unsigned int i=0; i<_holders.size(); i++) {
-            cout << "Address of holder[i]._pts is" << " " << &(_holders[i]._pts) << endl;
-            // cout << _holders[i]._pts(0,0) << endl;
-            cout << "dims in shf[i] member:" << " " << _holders[i]._pts.rows() << " " << _holders[i]._pts.cols() << endl;
-            // cout << __LINE__ << endl;
+            _holders.push_back(new ShiftedPointHolder(
+                pts,
+                g,
+                W,
+                max_bound,
+                shifts(i, 0), 
+                shifts(i, 1)
+            ));
+        }
+
+        _uniform_holder.reset(new UniformPointHolder(pts, g));
+    }
+
+    virtual ~ManyShiftsPointHolder() { }
+
+    virtual void draw_switch(
+        TwoContactsMatrix& two_old_contacts,
+        TwoContactsMatrix& two_new_contacts,
+        pair<int, int>& two_chosen_inds,
+        int first_chosen_index = -1) 
+    {
+        if (_unit_interval_sampler(_g) < _mixture_prob) {
+            _uniform_holder->draw_switch(two_old_contacts, two_new_contacts, two_chosen_inds, first_chosen_index);
+        } else {
+            int i = _holder_sampler(_g);
+            _holders[i].draw_switch(two_old_contacts, two_new_contacts, two_chosen_inds, first_chosen_index);
         }
     }
 
+    virtual void probability_of_switch(
+        TwoContactsMatrix& two_old_contacts, 
+        TwoContactsMatrix& two_new_contacts,
+        double& probability_of_new_given_old,
+        double& probability_of_old_given_new) 
+    {
+        probability_of_new_given_old = 0.0;
+        probability_of_old_given_new = 0.0;
 
-    void draw_switch(TwoContactsMatrix& two_old_contacts, TwoContactsMatrix& two_new_contacts, pair<int, int>& two_chosen_inds) {
-        // cout << __LINE__ << endl;
-        int i =  _uniform_sampler(_g);
-        // cout << __LINE__ << endl;
-        // cout << i << endl;
-        // cout << _holders.size() << endl;
-        _holders[i].draw_switch(two_old_contacts, two_new_contacts, two_chosen_inds);
-        // cout << __LINE__ << endl;
-    }
+        double probability_of_new_given_old_temp = 0.0;
+        double probability_of_old_given_new_temp = 0.0;
 
-    double probability_of_switch(TwoContactsMatrix& two_old_contacts, TwoContactsMatrix& two_new_contacts) {
-        double ps = 0.0;
-        for (unsigned int i = 0; i < _holders.size(); i++) {
-            ps += _holders[i].probability_of_switch(two_old_contacts, two_new_contacts);
+        for (int i = 0; i < _holders.size(); i++) {
+            _holders[i].probability_of_switch(
+                two_old_contacts, 
+                two_new_contacts,
+                probability_of_new_given_old_temp,
+                probability_of_old_given_new_temp);
+
+            probability_of_new_given_old += probability_of_new_given_old_temp;
+            probability_of_old_given_new += probability_of_old_given_new_temp;
         }
-        return (ps / _holders.size());
+
+        probability_of_new_given_old *= (1 - _mixture_prob) / _holders.size();
+        probability_of_old_given_new *= (1 - _mixture_prob) / _holders.size();
+
+        _uniform_holder->probability_of_switch(
+            two_old_contacts, 
+            two_new_contacts,
+            probability_of_new_given_old_temp,
+            probability_of_old_given_new_temp);
+
+        probability_of_new_given_old += _mixture_prob * probability_of_new_given_old_temp;
+        probability_of_old_given_new += _mixture_prob * probability_of_old_given_new_temp;
     }
 
-    void perform_switch(TwoContactsMatrix& two_new_contacts, pair<int, int>& two_chosen_inds) {
-        // cout << __LINE__ << endl;
-        for (unsigned int i = 0; i < _holders.size(); i++) {
+    virtual void perform_switch(
+        TwoContactsMatrix& two_new_contacts, 
+        pair<int, int>& two_chosen_inds) 
+    {
+        for (int i = 0; i < _holders.size(); i++) {
             _holders[i].perform_switch(two_new_contacts, two_chosen_inds);
         }
-        _pts.row(two_chosen_inds.first) = two_new_contacts.row(0);
-        _pts.row(two_chosen_inds.second) = two_new_contacts.row(1);
+        _uniform_holder->perform_switch(two_new_contacts, two_chosen_inds);
     }
+
 };
-*/
