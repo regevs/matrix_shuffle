@@ -1,5 +1,6 @@
 # Files to ignore
 bin/matrix_shuffle_all
+datasets/*
 
 # Prerequisites
 *.d
