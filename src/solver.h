@@ -2,6 +2,9 @@
 #include "common.h"
 #include "io.h"
 
+// Point holders
+#include "point_holder.h"
+
 mutex progress_bar_lock;
 boost::progress_display* progress_bar;
 
@@ -42,6 +45,8 @@ class Solver {
     
 	long _l1_distance;
     bool _shuffle;
+
+    boost::scoped_ptr<PointHolder> _point_holder;
 
     Solver(PointMatrix& pts, 
                 int min_bound, 
@@ -132,11 +137,11 @@ class Solver {
         return _uniform_point_sampler(_g);
     }
 
-    void draw_switch(TwoContactsMatrix& two_old_contacts,
+    void draw_switch_uniformly(TwoContactsMatrix& two_old_contacts,
                      TwoContactsMatrix& two_new_contacts,
                      pair<int, int>& two_chosen_inds,
                      int first_chosen_index = -1) {
-
+        
         if (first_chosen_index != -1) {
             two_chosen_inds.first = first_chosen_index;
         } else {
@@ -167,7 +172,7 @@ class Solver {
         }
     }
 
-    void perform_switch(TwoContactsMatrix& two_new_contacts,
+    void perform_switch_in_points(TwoContactsMatrix& two_new_contacts,
                         pair<int, int>& two_chosen_inds) {
         _pts.row(two_chosen_inds.first) = two_new_contacts.row(0);
         _pts.row(two_chosen_inds.second) = two_new_contacts.row(1);
@@ -228,10 +233,10 @@ class Solver {
             if (_pts(i, 1) - _pts(i, 0) < _min_dist) {
                 corrected++;
                 while (true) {
-                    draw_switch(two_old_contacts, two_new_contacts, two_chosen_inds, i);
+                    draw_switch_uniformly(two_old_contacts, two_new_contacts, two_chosen_inds, i);
                     if (((two_new_contacts(0, 1) - two_new_contacts(0, 0)) >= _min_dist) &&
                         ((two_new_contacts(1, 1) - two_new_contacts(1, 0)) >= _min_dist)) {
-                        perform_switch(two_new_contacts, two_chosen_inds);
+                        perform_switch_in_points(two_new_contacts, two_chosen_inds);
                         break;
                     }
                 }
@@ -332,6 +337,8 @@ class Solver {
         pair<int, int> two_chosen_inds;        
 
         double log_ratio;
+        double probability_of_new_given_old;
+        double probability_of_old_given_new;
         double accept_p;
 
         long long int accept_count = 0;
@@ -342,8 +349,6 @@ class Solver {
         long long int total_accept_count = 0;
         long long int total_improved_delta = 0;
 
-        PointMatrix out_pts(_pts.rows(), _pts.cols());
-
         //
         // Shuffle coordinates properly
         //
@@ -351,6 +356,14 @@ class Solver {
             shuffle_coordinates();
             verify_minimal_distance();
         }
+
+        //
+        // Initialize point holder
+        //
+        _point_holder.reset(new UniformPointHolder(
+            _pts,
+            _g
+        ));
 
         //
         // Calculate starting and target likelihoods
@@ -381,12 +394,19 @@ class Solver {
                 saveArray(output_points.topRows(_print_only_first), output_filename.string(), _output_txt);
             }   
 
-            draw_switch(two_old_contacts, two_new_contacts, two_chosen_inds);    
+            _point_holder->draw_switch(two_old_contacts, two_new_contacts, two_chosen_inds);    
 
             // See if it improved
             log_ratio = compute_log_ratio(two_old_contacts, two_new_contacts);
 
-            accept_p = exp(log_ratio);
+            _point_holder->probability_of_switch(
+                two_old_contacts, 
+                two_new_contacts,
+                probability_of_new_given_old,
+                probability_of_old_given_new
+            );
+
+            accept_p = exp(log_ratio) * probability_of_old_given_new / probability_of_new_given_old;
 
             if (accept_p >= 1) {
                 total_improved_delta++;
@@ -397,8 +417,11 @@ class Solver {
                 // Update histogram
                 update_current_histogram(two_old_contacts, two_new_contacts);
 
+                // Internal maintenance before actually performing switch
+                _point_holder->perform_switch(two_new_contacts, two_chosen_inds);
+
                 // Perform the switch
-                perform_switch(two_new_contacts, two_chosen_inds);
+                perform_switch_in_points(two_new_contacts, two_chosen_inds);
 
                 // Stats
                 accept_count++;

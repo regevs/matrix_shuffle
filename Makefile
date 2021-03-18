@@ -29,7 +29,7 @@ all: $(OBJ)
 	$(CXX) $@ -c $<
 
 clean:
-	rm -f bin/*.o
+	rm -f src/*.o
 	rm $(BIN)
 
 

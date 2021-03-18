@@ -1,9 +1,9 @@
 #include "common.h"
 #include "solver.h"
 
-class GreedyOptimizer : public Solver {
+class MetropolisHastings : public Solver {
     public:
-        GreedyOptimizer(PointMatrix& pts, 
+        MetropolisHastings(PointMatrix& pts, 
                 int min_bound, 
                 int max_bound, 
                 int min_dist,
@@ -43,21 +43,21 @@ class GreedyOptimizer : public Solver {
         double ret = 0.0;
 
         ret += _histogram_lookup[new_first_distance];
-        ret -= log(_current_histogram[_bin_lookup[new_first_distance]]+1);
-        
+        ret -= log(_dcounts_table(_bin_lookup[new_first_distance], 1));
+
         ret -= _histogram_lookup[old_first_distance];
-        ret += log(_current_histogram[_bin_lookup[old_first_distance]]);
+        ret += log(_dcounts_table(_bin_lookup[old_first_distance], 1));
 
         ret += _histogram_lookup[new_second_distance];
-        ret -= log(_current_histogram[_bin_lookup[new_second_distance]]+1);
+        ret -= log(_dcounts_table(_bin_lookup[new_second_distance], 1));
 
         ret -= _histogram_lookup[old_second_distance];
-        ret += log(_current_histogram[_bin_lookup[old_second_distance]]);
+        ret += log(_dcounts_table(_bin_lookup[old_second_distance], 1));
 
         return ret;
     }            
 
     virtual bool decide_to_accept(double accept_p) { 
-        return (accept_p >= 1); 
+        return (_unit_interval_sampler(_g) <= accept_p);
     }
 };

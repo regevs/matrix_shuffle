@@ -1,8 +1,11 @@
 #include "common.h"
+
+// Various solvers
 #include "solver.h"
 #include "greedy_optimizer.h"
 #include "stochastic_root_finder.h"
 #include "stochastic_optimizer.h"
+#include "mh_solver.h"
 
 void sort_filter_points(const PointMatrix& points, PointMatrix* out_points, int min_dist) {
     int n_out_row = 0;
@@ -91,7 +94,7 @@ int main(int argc, char** argv) {
     //
     po::options_description desc("Allowed options");
     desc.add_options()
-        ("points_filename", po::value<string>()->default_value("points.txt"), "Points filename")
+        ("points_filename", po::value<string>(), "Points filename")
         ("output_dir", po::value<string>()->default_value("output"), "Output directory")
         ("counts_filename", po::value<string>(), "RV table filename")
         ("dcounts_filename", po::value<string>(), "RV table filename")
@@ -187,7 +190,7 @@ int main(int argc, char** argv) {
     if (distance_bin_size == -1) {
         distance_bin_size = max_bound;
     }
-   
+
     if (vm["mode"].as<string>() == "mh") {
         MetropolisHastings GO(
             sorted_filtered_ds_points, 

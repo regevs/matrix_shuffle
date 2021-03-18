@@ -28,6 +28,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/format.hpp>
+#include <boost/scoped_ptr.hpp>
 
 #include "hopscotch/hopscotch_map.h"
 
