@@ -96,8 +96,8 @@ class UniformPointHolder : public PointHolder {
         double& probability_of_new_given_old,
         double& probability_of_old_given_new) {
         // All probabilities are uniform
-        probability_of_new_given_old = 1.0 / (_n_points * (_n_points - 1));
-        probability_of_old_given_new = 1.0 / (_n_points * (_n_points - 1));
+        probability_of_new_given_old = 1.0 / (_n_points * (_n_points - 1) * 2);
+        probability_of_old_given_new = 1.0 / (_n_points * (_n_points - 1) * 2);
     }   
 
     virtual void perform_switch(
@@ -299,6 +299,170 @@ class ShiftedPointHolder : public PointHolder {
         insert_point(point_to_bin_number(two_new_contacts.row(1)), two_chosen_inds.second); 
     }
 };
+
+
+
+class DiagonalPointHolder : public PointHolder {
+  public:
+    
+    int _W;
+    
+    // There is a single "bin" here - just points close to the diagonal
+    std::vector<bool> _inside_bin;
+    std::vector<int> _point_to_index_within_bin;    
+    std::vector<int> _bin_to_contacts;
+
+    DiagonalPointHolder(PointMatrix& pts,
+                mt19937& g,
+                int W) :
+        PointHolder(
+            pts,
+            g
+        ),
+        _W(W),        
+        _inside_bin(_n_points, false),
+        _point_to_index_within_bin(_n_points, -1)
+    {
+        // Where do the points fall            
+        for (int i = 0; i < _n_points; i++) {
+            if (abs(_pts(i, 1) - _pts(i, 0)) < _W) {
+                insert_point(i);       
+            }
+        }
+    }
+
+    virtual ~DiagonalPointHolder() { }
+       
+    virtual void insert_point(int point_index) {
+        if (_inside_bin[point_index]) { 
+            return;
+        }
+
+        _inside_bin[point_index] = true;
+        _point_to_index_within_bin[point_index] = _bin_to_contacts.size();
+        _bin_to_contacts.push_back(point_index);        
+    }  
+
+    virtual void erase_point(int point_index) {
+        if (!_inside_bin[point_index]) { 
+            return;
+        }
+
+        int current_index = _point_to_index_within_bin[point_index];
+        int current_size = _bin_to_contacts.size();
+        if (current_index == current_size-1) {
+            _bin_to_contacts.pop_back();
+        } else {
+            _bin_to_contacts.at(current_index) = _bin_to_contacts.at(current_size-1);
+            _bin_to_contacts.pop_back();
+            _point_to_index_within_bin[_bin_to_contacts.at(current_index)] = current_index;
+        }
+
+        _point_to_index_within_bin[point_index] = -1;
+    }
+
+    virtual int draw_random_point_from_bin() {
+        return _bin_to_contacts[int(_unit_interval_sampler(_g) * _bin_to_contacts.size())];
+    }        
+    
+    virtual void draw_switch(
+        TwoContactsMatrix& two_old_contacts,
+        TwoContactsMatrix& two_new_contacts,
+        pair<int, int>& two_chosen_inds,
+        int first_chosen_index = -1) {
+        
+        // Draw two points
+        do {
+            // Draw first point uniformly 
+            if (first_chosen_index != -1) {
+                two_chosen_inds.first = first_chosen_index;
+            } else {
+                two_chosen_inds.first = draw_random_point_from_bin();
+            }
+
+            // Draw the second point
+            two_chosen_inds.second = draw_random_point_from_bin();
+        } while (two_chosen_inds.second == two_chosen_inds.first);
+                        
+        if (two_chosen_inds.second < two_chosen_inds.first) {
+            std::swap(two_chosen_inds.first, two_chosen_inds.second);            
+        }
+
+        two_old_contacts(0, 0) = _pts(two_chosen_inds.first, 0);
+        two_old_contacts(0, 1) = _pts(two_chosen_inds.first, 1);
+        two_old_contacts(1, 0) = _pts(two_chosen_inds.second, 0);
+        two_old_contacts(1, 1) = _pts(two_chosen_inds.second, 1);
+
+        // Flip a coin to decide what switch to see
+        int which_side = (_unit_interval_sampler(_g) < 0.5);
+        two_new_contacts(0, 0) = two_old_contacts(0, 0);
+        two_new_contacts(0, 1) = two_old_contacts(1, which_side);
+        two_new_contacts(1, 0) = two_old_contacts(which_side, 1-which_side);
+        two_new_contacts(1, 1) = two_old_contacts(1-which_side, 1);
+    
+        for (int l = 0; l < 2; l++) {
+            if (two_new_contacts(l, 0) > two_new_contacts(l, 1)) {
+                std::swap(two_new_contacts(l, 0), two_new_contacts(l, 1));
+            }
+        }
+    }
+
+    virtual void probability_of_switch(
+        TwoContactsMatrix& two_old_contacts, 
+        TwoContactsMatrix& two_new_contacts,
+        double& probability_of_new_given_old,
+        double& probability_of_old_given_new) {
+
+        // If they are not in the diagonal strip, the prob is 0
+        if ((abs(two_old_contacts(0, 1) - two_old_contacts(0, 0)) >= _W) || 
+            (abs(two_old_contacts(1, 1) - two_old_contacts(1, 0)) >= _W)) {
+            probability_of_new_given_old = 0.0;
+        } else {
+            // The probablity to get this particular switch is:
+            // - The probability to draw the first point (1 / # points in bin)
+            // - The probability to draw the second point given the first (1 / (# points in bin - 1))
+            // - The probability to draw that particular switch given the two points (1/2)
+            probability_of_new_given_old = 1.0 / (_bin_to_contacts.size() * (_bin_to_contacts.size() - 1) * 2);
+        }
+
+        // The other side
+         if ((abs(two_new_contacts(0, 1) - two_new_contacts(0, 0)) >= _W) || 
+             (abs(two_new_contacts(1, 1) - two_new_contacts(1, 0)) >= _W)) {
+            probability_of_old_given_new = 0.0;
+        } else {
+            // If we had replace the two old contacts with two new contacts, how many
+            // points would be in the diagonal strip?
+            int new_n_points_in_strip = _bin_to_contacts.size();
+            if (abs(two_old_contacts(0, 1) - two_old_contacts(0, 0)) < _W) {
+                new_n_points_in_strip--;
+            }
+            if (abs(two_old_contacts(1, 1) - two_old_contacts(1, 0)) < _W) {
+                new_n_points_in_strip--;
+            }
+            if (abs(two_new_contacts(0, 1) - two_new_contacts(0, 0)) < _W) {
+                new_n_points_in_strip++;
+            }
+            if (abs(two_new_contacts(1, 1) - two_new_contacts(1, 0)) < _W) {
+                new_n_points_in_strip++;
+            }
+
+            probability_of_old_given_new = 1.0 / (new_n_points_in_strip * (new_n_points_in_strip - 1) * 2);
+        }
+    }        
+
+    virtual void perform_switch(TwoContactsMatrix& two_new_contacts, pair<int, int>& two_chosen_inds) {
+        if (abs(two_new_contacts(0, 1) - two_new_contacts(0, 0)) >= _W) {
+            erase_point(two_chosen_inds.first);
+        }
+        if (abs(two_new_contacts(1, 1) - two_new_contacts(1, 0)) >= _W) {
+            erase_point(two_chosen_inds.second);
+        }
+    }
+};
+
+
+
+
 
 
 class ManyShiftsPointHolder : public PointHolder {
