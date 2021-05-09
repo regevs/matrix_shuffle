@@ -462,9 +462,6 @@ class DiagonalPointHolder : public PointHolder {
 
 
 
-
-
-
 class ManyShiftsPointHolder : public PointHolder {
   public:
     boost::ptr_vector<ShiftedPointHolder> _holders;
@@ -501,6 +498,98 @@ class ManyShiftsPointHolder : public PointHolder {
     }
 
     virtual ~ManyShiftsPointHolder() { }
+
+    virtual void draw_switch(
+        TwoContactsMatrix& two_old_contacts,
+        TwoContactsMatrix& two_new_contacts,
+        pair<int, int>& two_chosen_inds,
+        int first_chosen_index = -1) 
+    {
+        if (_unit_interval_sampler(_g) < _mixture_prob) {
+            _uniform_holder->draw_switch(two_old_contacts, two_new_contacts, two_chosen_inds, first_chosen_index);
+        } else {
+            int i = _holder_sampler(_g);
+            _holders[i].draw_switch(two_old_contacts, two_new_contacts, two_chosen_inds, first_chosen_index);
+        }
+    }
+
+    virtual void probability_of_switch(
+        TwoContactsMatrix& two_old_contacts, 
+        TwoContactsMatrix& two_new_contacts,
+        double& probability_of_new_given_old,
+        double& probability_of_old_given_new) 
+    {
+        probability_of_new_given_old = 0.0;
+        probability_of_old_given_new = 0.0;
+
+        double probability_of_new_given_old_temp = 0.0;
+        double probability_of_old_given_new_temp = 0.0;
+
+        for (int i = 0; i < _holders.size(); i++) {
+            _holders[i].probability_of_switch(
+                two_old_contacts, 
+                two_new_contacts,
+                probability_of_new_given_old_temp,
+                probability_of_old_given_new_temp);
+
+            probability_of_new_given_old += probability_of_new_given_old_temp;
+            probability_of_old_given_new += probability_of_old_given_new_temp;
+        }
+
+        probability_of_new_given_old *= (1 - _mixture_prob) / _holders.size();
+        probability_of_old_given_new *= (1 - _mixture_prob) / _holders.size();
+
+        _uniform_holder->probability_of_switch(
+            two_old_contacts, 
+            two_new_contacts,
+            probability_of_new_given_old_temp,
+            probability_of_old_given_new_temp);
+
+        probability_of_new_given_old += _mixture_prob * probability_of_new_given_old_temp;
+        probability_of_old_given_new += _mixture_prob * probability_of_old_given_new_temp;
+    }
+
+    virtual void perform_switch(
+        TwoContactsMatrix& two_new_contacts, 
+        pair<int, int>& two_chosen_inds) 
+    {
+        for (int i = 0; i < _holders.size(); i++) {
+            _holders[i].perform_switch(two_new_contacts, two_chosen_inds);
+        }
+        _uniform_holder->perform_switch(two_new_contacts, two_chosen_inds);
+    }
+
+};
+
+
+
+class MixturePointHolder : public PointHolder {
+  public:
+    boost::ptr_vector<PointHolder> _holders;
+    boost::scoped_ptr<UniformPointHolder> _uniform_holder;
+    
+    mt19937 _g;
+    std::uniform_int_distribution<> _holder_sampler;
+    double _mixture_prob;    
+   
+    MixturePointHolder(
+        PointMatrix& pts,
+        mt19937& g,
+        const std::vector<PointHolder*>& holders,
+        double mixture_prob = 0.5) :
+        PointHolder(pts, g),
+        _g(g),
+        _holder_sampler(0, holders.size()),
+        _mixture_prob(mixture_prob)
+    {
+        _uniform_holder.reset(new UniformPointHolder(pts, g));
+
+        for (int i = 0; i < holders.size(); i++) {
+            _holders.push_back(holders[i]);
+        }
+    }
+
+    virtual ~MixturePointHolder() { }
 
     virtual void draw_switch(
         TwoContactsMatrix& two_old_contacts,
