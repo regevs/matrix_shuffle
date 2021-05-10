@@ -359,6 +359,7 @@ class DiagonalPointHolder : public PointHolder {
         }
 
         _point_to_index_within_bin[point_index] = -1;
+        _inside_bin[point_index] = false;
     }
 
     virtual int draw_random_point_from_bin() {
@@ -579,7 +580,7 @@ class MixturePointHolder : public PointHolder {
         double mixture_prob = 0.5) :
         PointHolder(pts, g),
         _g(g),
-        _holder_sampler(0, holders.size()),
+        _holder_sampler(0, holders.size()-1),
         _mixture_prob(mixture_prob)
     {
         _uniform_holder.reset(new UniformPointHolder(pts, g));

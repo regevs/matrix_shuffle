@@ -5,11 +5,11 @@ CXX=g++
 #CXXFLAGS=-std=c++11 -Wall -pedantic -O3 -DNDEBUG -pthread -I/usr/local/include/eigen3/
 #LDFLAGS=-O3 -pthread -lboost_system -lboost_thread-mt -lboost_program_options 
 
-CXXFLAGS=-O3 -std=c++11  -Wall -pedantic -I/usr/local/include/eigen3/ -I/usr/local/include/boost/ -DNDEBUG -g
+CXXFLAGS=-std=c++11  -Wall -pedantic -I/usr/local/include/eigen3/ -I/usr/local/include/boost/ -DNDEBUG -O3
 #CXXFLAGS=-O3 -std=c++11 -Wall -pedantic -I/home/yaelba/code/include/eigen3/eigen-eigen-323c052e1731 -DNDEBUG#  -Wcomment -DNDEBUG #-pg
 
 #LDFLAGS=-O3 -lboost_system -lboost_program_options -lboost_filesystem -pg
-LDFLAGS=-O3 -lboost_system -lboost_program_options -lboost_filesystem 
+LDFLAGS=-lboost_system -lboost_program_options -lboost_filesystem -O3
 
 # DEBUG
 #CXXFLAGS=-g -std=c++11  -Wall -pedantic -I/usr/local/include/eigen3/

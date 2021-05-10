@@ -370,23 +370,61 @@ class Solver {
         //     int(_max_bound / 4)
         // ));
 
-        MatrixXi shifts;
-        int W = int(_max_bound / 100);
+        // MatrixXi shifts;
+        // int W = int(_max_bound / 100);
 
-        shifts.resize(4, 2);
-        shifts <<
-            0, 0,
-            W/2, 0,
-            0, W/2,
-            W/2, W/2;
+        // shifts.resize(2, 2);
+        // shifts <<
+        //     0, 0,
+        //     W/2, W/2;
 
-        _point_holder.reset(new ManyShiftsPointHolder(
+        // _point_holder.reset(new ManyShiftsPointHolder(
+        //     _pts,
+        //     _g,
+        //     W,
+        //     _max_bound,
+        //     shifts,
+        //     0.5
+        // ));
+
+        _point_holder.reset(new UniformPointHolder(
             _pts,
-            _g,
-            W,
-            _max_bound,
-            shifts
+            _g
         ));
+
+        // int W = int(_max_bound / 100);
+
+        // std::vector<PointHolder*> holders{
+        //     new ShiftedPointHolder(
+        //         _pts,
+        //         _g,
+        //         W,
+        //         _max_bound,
+        //         0,
+        //         0
+        //     ),
+        //     new ShiftedPointHolder(
+        //         _pts,
+        //         _g,
+        //         W,
+        //         _max_bound,
+        //         W/2,
+        //         W/2
+        //     ),
+        //     new DiagonalPointHolder(
+        //         _pts,
+        //         _g,
+        //         W
+        //     )
+        // };
+
+        // _point_holder.reset(
+        //     new MixturePointHolder(
+        //         _pts,
+        //         _g,
+        //         holders
+        //     )
+        // );
 
 
         //
