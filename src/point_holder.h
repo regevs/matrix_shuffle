@@ -116,18 +116,21 @@ class ShiftedPointHolder : public PointHolder {
     int _max_bound;
     int _shift0;
     int _shift1;
+    bool _allow_nonlocal_switches;
 
     int _n_bins;
     std::vector<int> _point_to_bin;
     std::vector<int> _point_to_index_within_bin;    
     boost::ptr_vector<std::vector<int>> _bin_to_contacts;
+    std::vector<bool> _bin_is_diag;
 
     ShiftedPointHolder(PointMatrix& pts,
                 mt19937& g,
                 int W,
                 int max_bound,
                 int shift0,
-                int shift1) :
+                int shift1,
+                bool allow_nonlocal_switches = false) :
         PointHolder(
             pts,
             g
@@ -136,14 +139,17 @@ class ShiftedPointHolder : public PointHolder {
         _max_bound(max_bound),
         _shift0(shift0),
         _shift1(shift1),
-        
+        _allow_nonlocal_switches(allow_nonlocal_switches),        
         _n_bins(int(ceil(max_bound / double(W)) + 1)),
         _point_to_bin(_n_points, -1),
         _point_to_index_within_bin(_n_points, -1)
     {
         // Initialize
-        for (int i = 0; i < _n_bins * _n_bins; i++) {
-            _bin_to_contacts.push_back(new std::vector<int>());  
+        for (int i = 0; i < _n_bins; i++) {
+            for (int j = 0; j < _n_bins; j++) {
+                _bin_is_diag.push_back(i == j);
+                _bin_to_contacts.push_back(new std::vector<int>());  
+            }
         }
 
         // Where do the points fall            
@@ -152,10 +158,6 @@ class ShiftedPointHolder : public PointHolder {
             int bin_idx = point_to_bin_number(_pts.row(i));
             insert_point(bin_idx, i);       
         }
-
-        // for (int i = 0; i < _n_bins * _n_bins; i++) {
-        //     cout << "_bin_to_contacts[" << i << "]: " << _bin_to_contacts[i].size() << endl;
-        // }
     }
 
     virtual ~ShiftedPointHolder() { }
@@ -226,8 +228,14 @@ class ShiftedPointHolder : public PointHolder {
         two_old_contacts(1, 0) = _pts(two_chosen_inds.second, 0);
         two_old_contacts(1, 1) = _pts(two_chosen_inds.second, 1);
 
-        // Flip a coin to decide what switch to see
-        int which_side = (_unit_interval_sampler(_g) < 0.5);
+        int which_side;
+        if (_allow_nonlocal_switches || (_bin_is_diag[_point_to_bin[two_chosen_inds.first]])) {
+            // Flip a coin to decide what switch to see
+            which_side = (_unit_interval_sampler(_g) < 0.5);
+        } else {
+            // A switch that will keep within same bin
+            which_side = 1;
+        }
         two_new_contacts(0, 0) = two_old_contacts(0, 0);
         two_new_contacts(0, 1) = two_old_contacts(1, which_side);
         two_new_contacts(1, 0) = two_old_contacts(which_side, 1-which_side);
@@ -245,49 +253,48 @@ class ShiftedPointHolder : public PointHolder {
         TwoContactsMatrix& two_new_contacts,
         double& probability_of_new_given_old,
         double& probability_of_old_given_new) {
-        // Shift
-        // Matrix2i shifted_old_contacts, shifted_new_contacts;
-        // shifted_old_contacts(0, 0) = two_old_contacts(0, 0) + _shift0;
-        // shifted_old_contacts(0, 1) = two_old_contacts(0, 1) + _shift1;
-        // shifted_old_contacts(1, 0) = two_old_contacts(1, 0) + _shift0;
-        // shifted_old_contacts(1, 1) = two_old_contacts(1, 1) + _shift1;
-
-        // shifted_new_contacts(0, 0) = two_new_contacts(0, 0) + _shift0;
-        // shifted_new_contacts(0, 1) = two_new_contacts(0, 1) + _shift1;
-        // shifted_new_contacts(1, 0) = two_new_contacts(1, 0) + _shift0;
-        // shifted_new_contacts(1, 1) = two_new_contacts(1, 1) + _shift1;
 
         Vector2i old_ind1d;
-        // old_ind1d(0) = int(shifted_old_contacts(0, 0) / _W) * _n_bins + int(shifted_old_contacts(0, 1) / _W);
-        // old_ind1d(1) = int(shifted_old_contacts(1, 0) / _W) * _n_bins + int(shifted_old_contacts(1, 1) / _W);
         old_ind1d(0) = point_to_bin_number(two_old_contacts.row(0));
         old_ind1d(1) = point_to_bin_number(two_old_contacts.row(1));
 
         Vector2i new_ind1d;
-        // new_ind1d(0) = int(shifted_new_contacts(0, 0) / _W) * _n_bins + int(shifted_new_contacts(0, 1) / _W);
-        // new_ind1d(1) = int(shifted_new_contacts(1, 0) / _W) * _n_bins + int(shifted_new_contacts(1, 1) / _W);
         new_ind1d(0) = point_to_bin_number(two_new_contacts.row(0));
         new_ind1d(1) = point_to_bin_number(two_new_contacts.row(1));
 
-        // If they are not in the same bin, the prob is 0
-        if (old_ind1d(0) != old_ind1d(1)) {
-            probability_of_new_given_old = 0.0;
-        } else {
-            // The probablity to get this particular switch is:
-            // - The probability to draw the first point (1 / # of points)
-            // - The probability to draw the second point given the first (1 / (# points in bin - 1))
-            // - The probability to draw that particular switch given the two points (1/2)
-            probability_of_new_given_old = 1.0 / (_n_points * (_bin_to_contacts[old_ind1d(0)].size() - 1) * 2);
-        }
+        if (_allow_nonlocal_switches) {
+            // If they are not in the same bin, the prob is 0
+            if (old_ind1d(0) != old_ind1d(1)) {
+                probability_of_new_given_old = 0.0;
+            } else {
+                // The probablity to get this particular switch is:
+                // - The probability to draw the first point (1 / # of points)
+                // - The probability to draw the second point given the first (1 / (# points in bin - 1))
+                // - The probability to draw that particular switch given the two points (1/2)
+                probability_of_new_given_old = 1.0 / (_n_points * (_bin_to_contacts[old_ind1d(0)].size() - 1) * 2);
+            }
 
-        // The other side
-        if (new_ind1d(0) != new_ind1d(1)) {
-            probability_of_old_given_new = 0.0;
+            // The other side
+            if (new_ind1d(0) != new_ind1d(1)) {
+                probability_of_old_given_new = 0.0;
+            } else {
+                // If they are both in the same bin after the same switch, it could be shown (?) that 
+                // It's the same bin as before, so the number of points in the bin doesn't change and 
+                // therefore the probability doesn't change
+                probability_of_old_given_new = 1.0 / (_n_points * (_bin_to_contacts[new_ind1d(0)].size() - 1) * 2);
+            }
         } else {
-            // If they are both in the same bin after the same switch, it could be shown (?) that 
-            // It's the same bin as before, so the number of points in the bin doesn't change and 
-            // therefore the probability doesn't change
-            probability_of_old_given_new = 1.0 / (_n_points * (_bin_to_contacts[new_ind1d(0)].size() - 1) * 2);
+            // If they are not all in the same bin, the prob is 0
+            if ((old_ind1d(0) != old_ind1d(1)) || (new_ind1d(0) != new_ind1d(1)) || (old_ind1d(0) != new_ind1d(1))) {
+                probability_of_new_given_old = 0.0;
+                probability_of_old_given_new = 0.0;
+            } else if (!_bin_is_diag[old_ind1d(0)]) {
+                probability_of_new_given_old = 1.0 / (_n_points * (_bin_to_contacts[old_ind1d(0)].size() - 1));
+                probability_of_old_given_new = 1.0 / (_n_points * (_bin_to_contacts[old_ind1d(0)].size() - 1));
+            } else { // diagonal bin
+                probability_of_new_given_old = 1.0 / (_n_points * (_bin_to_contacts[old_ind1d(0)].size() - 1) * 2);
+                probability_of_old_given_new = 1.0 / (_n_points * (_bin_to_contacts[old_ind1d(0)].size() - 1) * 2);
+            }            
         }
     }        
 

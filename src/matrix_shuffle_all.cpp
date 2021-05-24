@@ -114,7 +114,8 @@ int main(int argc, char** argv) {
         ("srf_n0", po::value<long long int>()->default_value(1000000), "n0")
         ("srf_exponent", po::value<double>()->default_value(0.5), "exponent")
         ("srf_multiplier", po::value<double>()->default_value(1), "multiplier")
-        ("sgd_regularization_penalty", po::value<double>()->default_value(1), "sgd_regularization_penalty")
+        ("sgd_smoothness_regularization_penalty", po::value<double>()->default_value(0), "sgd_smoothness_regularization_penalty")
+        ("sgd_closeness_regularization_penalty", po::value<double>()->default_value(0), "sgd_closeness_regularization_penalty")
     ;
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -273,7 +274,8 @@ int main(int argc, char** argv) {
             vm["srf_n0"].as<long long int>(),
             vm["srf_exponent"].as<double>(),
             vm["srf_multiplier"].as<double>(),
-            vm["sgd_regularization_penalty"].as<double>()
+            vm["sgd_smoothness_regularization_penalty"].as<double>(),
+            vm["sgd_closeness_regularization_penalty"].as<double>()
             );
         GO.run();
     } else {

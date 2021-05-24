@@ -48,6 +48,10 @@ class Solver {
 
     boost::scoped_ptr<PointHolder> _point_holder;
 
+    std::vector<int> _switch_count;
+    int _switched_ge1;
+    int _switched_ge5;
+
     Solver(PointMatrix& pts, 
                 int min_bound, 
                 int max_bound, 
@@ -78,7 +82,10 @@ class Solver {
         _n_points(_pts.rows()),
         _g(seed),
         _uniform_point_sampler(0, _n_points-1),
-		_shuffle(shuffle)
+		_shuffle(shuffle),
+        _switch_count(_pts.rows(), 0),
+        _switched_ge1(0),
+        _switched_ge5(0)
     {
         cout << "Starting constructor... ";
 
@@ -176,6 +183,22 @@ class Solver {
                         pair<int, int>& two_chosen_inds) {
         _pts.row(two_chosen_inds.first) = two_new_contacts.row(0);
         _pts.row(two_chosen_inds.second) = two_new_contacts.row(1);
+
+        if (_switch_count[two_chosen_inds.first] == 0) {
+            _switched_ge1++;
+        }
+        if (_switch_count[two_chosen_inds.first] == 4) {
+            _switched_ge5++;
+        }
+        _switch_count[two_chosen_inds.first]++;
+
+        if (_switch_count[two_chosen_inds.second] == 0) {
+            _switched_ge1++;
+        }
+        if (_switch_count[two_chosen_inds.second] == 4) {
+            _switched_ge5++;
+        }
+        _switch_count[two_chosen_inds.second]++;
     }
 
     void update_current_histogram(
@@ -360,16 +383,6 @@ class Solver {
         //
         // Initialize point holder
         //
-
-        // _point_holder.reset(new ShiftedPointHolder(
-        //     _pts,
-        //     _g,
-        //     _max_bound / 2,
-        //     _max_bound,
-        //     int(_max_bound / 4),
-        //     int(_max_bound / 4)
-        // ));
-
         // MatrixXi shifts;
         // int W = int(_max_bound / 100);
 
@@ -508,10 +521,12 @@ class Solver {
                 auto elapsed_seconds = std::chrono::duration_cast<std::chrono::duration<double>>
                     (std::chrono::steady_clock::now() - period_time_begin).count();                
 
-                stats_file << boost::format("#its: %10i | 🕑: %6.1f [min] | it/s: %11.1f | Δ>1: %2.5f%% | Accept: %2.5f%% | max(abs(diff)): %8i | mean(abs(diff)): %6.2f | %%LL: %1.6f\n")
+                stats_file << boost::format("#its: %10i | 🕑: %6.1f [min] | it/s: %11.1f | ⇆ ≥1/≥5: %2.2f%%/%2.2f%% | Δ>1: %2.5f%% | Accept: %2.5f%% | max(abs(diff)): %8i | mean(abs(diff)): %6.2f | %%LL: %1.6f\n")
                     % n_iter
                     % (total_elapsed_seconds / 60)
                     % (_rate_every / elapsed_seconds)
+                    % (float(_switched_ge1) / _n_points * 100)
+                    % (float(_switched_ge5) / _n_points * 100)
                     % (float(total_improved_delta) / _rate_every * 100)
                     % (float(accept_count) / _rate_every * 100)
                     % max_abs_diff
@@ -539,6 +554,23 @@ class Solver {
             % n_iter
             % (static_cast<double>(total_accept_count) / n_iter);
         cout << "Running time: " << chrono::duration_cast<chrono::seconds> (end - begin).count() << "[sec]" << endl;
+
+        int max_count_to_show = 10;
+        VectorXi switch_count_counts = VectorXi::Zero(max_count_to_show+1);
+        for (int count : _switch_count) {
+            switch_count_counts[std::min(count, max_count_to_show)]++;
+        }
+
+        cout << endl << "# of switches per point:" << endl;
+        for (int i = 0; i < max_count_to_show; i++) {
+            cout << boost::format("%d switches: \t%d\n")
+                % i
+                % switch_count_counts[i];
+        }
+        cout << boost::format("%d+ switches: \t%d\n")
+                % max_count_to_show
+                % switch_count_counts[max_count_to_show];
+        cout << endl;
 
         const auto& output_points = _pts;   
         boost::filesystem::path output_filename = boost::filesystem::path(_output_dir) / boost::filesystem::path("output." + to_string(_n_iters));

@@ -58,7 +58,8 @@ class StochasticOptimizer : public Solver {
         long long int _srf_n_iter;
         double _srf_exponent;
         double _srf_multiplier;
-        double _sgd_regularization_penalty;
+        double _sgd_smoothness_regularization_penalty;
+        double _sgd_closeness_regularization_penalty;
 
         double _beta1;
 
@@ -96,7 +97,8 @@ class StochasticOptimizer : public Solver {
                 long long int srf_n0,
                 double srf_exponent,
                 double srf_multiplier,
-                double sgd_regularization_penalty
+                double sgd_smoothness_regularization_penalty,
+                double sgd_closeness_regularization_penalty
                 ) : 
             Solver(
                 pts,
@@ -119,7 +121,8 @@ class StochasticOptimizer : public Solver {
             _srf_n_iter(0),
             _srf_exponent(srf_exponent),
             _srf_multiplier(srf_multiplier),
-            _sgd_regularization_penalty(sgd_regularization_penalty),
+            _sgd_smoothness_regularization_penalty(sgd_smoothness_regularization_penalty),
+            _sgd_closeness_regularization_penalty(sgd_closeness_regularization_penalty),
             _beta1(0.9),
             _thetas(_n_bins),
             _target_histogram(_n_bins),
@@ -278,7 +281,7 @@ class StochasticOptimizer : public Solver {
             VectorXd adam_output(_n_bins);
 
             _adam.calculate(
-                delta + _sgd_regularization_penalty * star_reg_delta + _sgd_regularization_penalty * smooth_reg_delta,
+                delta + _sgd_closeness_regularization_penalty * star_reg_delta + _sgd_smoothness_regularization_penalty * smooth_reg_delta,
                 adam_output
             );
 
