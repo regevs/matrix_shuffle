@@ -249,15 +249,16 @@ class StochasticOptimizer : public Solver {
             VectorXd smooth_reg_delta(_n_bins);
             VectorXd star_reg_delta(_n_bins);
 
-            _smoothed_p = _beta1 * _smoothed_p + (1 - _beta1) * (_current_histogram.cast<double>() / _current_histogram.cast<double>().sum());
+            //_smoothed_p = _beta1 * _smoothed_p + (1 - _beta1) * (_current_histogram.cast<double>() / _current_histogram.cast<double>().sum());
 
             multiply_jacobian_by_vector(
                 //_target_histogram.cast<double>() / _target_histogram.cast<double>().sum(), 
-                //_current_histogram.cast<double>() / _current_histogram.cast<double>().sum(),
-                _smoothed_p / (1 - pow(_beta1, (_srf_n_iter+1))),
+                _current_histogram.cast<double>() / _current_histogram.cast<double>().sum(),
+                //_smoothed_p / (1 - pow(_beta1, (_srf_n_iter+1))),
                 (_current_histogram.cast<double>() - _target_histogram),
                 delta
                 );
+
             
             //delta *= _srf_multiplier;
 
@@ -285,7 +286,35 @@ class StochasticOptimizer : public Solver {
                 adam_output
             );
 
+            // It's important for the gradient to not change the sum of thetas. 
+            // Although mathemetically should be true, it might not be true due to numeric inaccuracy.
+            // Force it anyway.
+            adam_output = (adam_output.array() - adam_output.mean()).matrix();
+
+            // if (n_iter < _srf_every * 10) {
+            //     cout << "_thetas.sum() " << n_iter << " " << _thetas.sum() << endl;
+            //     cout << "cur-target.sum() " << n_iter << " " << (_current_histogram.cast<double>() - _target_histogram).sum() << endl;
+
+            //     // VectorXd pvec(_current_histogram.cast<double>() / _current_histogram.cast<double>().sum());
+            //     // VectorXd v((_current_histogram.cast<double>() - _target_histogram));
+
+            //     // cout << "-----" << endl;
+            //     // VectorXd pointwise((pvec.array() * v.array()).matrix());
+            //     // cout << pointwise.sum() << endl;
+            //     // cout << (pointwise.sum() * pvec).sum() << endl;
+            //     // cout << pvec.sum()-1 << endl;
+            //     // cout << pointwise.sum() - (pointwise.sum() * pvec).sum() << endl;
+            //     // cout << "-----" << endl;
+
+                
+            //     cout << "delta.sum() " << n_iter << " " << delta.sum() << endl;
+            //     cout << "adam_output.sum() " << n_iter << " " << adam_output.sum() << endl;
+            // }
+
+            
+
             _thetas = _thetas - _srf_multiplier * adam_output;               
+
 
 
             if ((n_iter % _rate_every) == 0) {

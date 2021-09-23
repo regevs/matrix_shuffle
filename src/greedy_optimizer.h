@@ -2,6 +2,7 @@
 #include "solver.h"
 
 class GreedyOptimizer : public Solver {
+
     public:
         GreedyOptimizer(PointMatrix& pts, 
                 int min_bound, 

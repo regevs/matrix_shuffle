@@ -98,6 +98,7 @@ int main(int argc, char** argv) {
         ("output_dir", po::value<string>()->default_value("output"), "Output directory")
         ("counts_filename", po::value<string>(), "RV table filename")
         ("dcounts_filename", po::value<string>(), "RV table filename")
+        ("thetas_filename", po::value<string>()->default_value(""), "RV table filename")
         ("W", po::value<int>()->default_value(-1), "Window size, set -1 for all range (obsolete)") 
         ("seed", po::value<int>()->default_value(0), "Random seem")
         ("min_dist", po::value<int>()->default_value(1000), "Minimum distance in a contact to consider")
@@ -169,6 +170,16 @@ int main(int argc, char** argv) {
     }    
     MatrixXd dcounts = load_csv(dcounts_filename, true);
 
+    string thetas_filename = vm["thetas_filename"].as<string>();
+    MatrixXd initial_thetas;
+    if (thetas_filename.length() > 0) {
+        if (!boost::filesystem::exists(thetas_filename)) {
+            cout << "No such file: " << thetas_filename << endl;
+            return -1;
+        }    
+        initial_thetas = load_csv(thetas_filename, true);
+    }
+
     string output_dir = vm["output_dir"].as<string>();
     if (!boost::filesystem::exists(output_dir)) {
         cout << "Creating directory " << output_dir << endl;
@@ -201,6 +212,7 @@ int main(int argc, char** argv) {
             vm["seed"].as<int>(),
             counts, 
             dcounts,
+            initial_thetas,
             n_iters, 
             output_dir, 
             output_every,
